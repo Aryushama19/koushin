@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <!-- スマホでの縦表示に最適化 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>更新確率計算ツール</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 10px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 100%;
+      margin: auto;
+      padding: 10px;
+    }
+    fieldset {
+      border: 1px solid #ccc;
+      padding: 8px;
+      margin-bottom: 15px;
+    }
+    legend {
+      font-size: 1.2em;
+      font-weight: bold;
+    }
+    /* 各入力ボックスは横に並べ、幅を小さめに設定 */
+    .input-group {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 10px;
+      justify-content: space-between;
+    }
+    .input-group input {
+      flex: none;
+      width: 18%;
+      font-size: 1em;
+      padding: 5px;
+    }
+    button {
+      font-size: 1em;
+      padding: 8px;
+      width: 100%;
+      margin-bottom: 15px;
+    }
+    .result p {
+      font-size: 1em;
+      margin: 5px 0;
+    }
+    hr {
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>更新確率計算ツール</h1>
+    <p>各入力は記号なしの数値のみで入力してください。<br>
+       例：2025 / 02 / 25 / 15 / 30
+    </p>
+    
+    <fieldset>
+      <legend>前回の更新時間</legend>
+      <div class="input-group">
+        <input type="number" id="lastYear" placeholder="年" value="年">
+        <input type="number" id="lastMonth" placeholder="月" value="月">
+        <input type="number" id="lastDay" placeholder="日" value="日">
+        <input type="number" id="lastHour" placeholder="時" value="時">
+        <input type="number" id="lastMinute" placeholder="分" value="分">
+      </div>
+    </fieldset>
+    
+    <fieldset>
+      <legend>観測時間</legend>
+      <div class="input-group">
+        <input type="number" id="obsYear" placeholder="年" value="年">
+        <input type="number" id="obsMonth" placeholder="月" value="月">
+        <input type="number" id="obsDay" placeholder="日" value="日">
+        <input type="number" id="obsHour" placeholder="時" value="時">
+        <input type="number" id="obsMinute" placeholder="分" value="分">
+      </div>
+    </fieldset>
+    
+    <button onclick="calculate()">計算する</button>
+    
+    <div class="result" id="result"></div>
+  </div>
+  
+  <script>
+    // 各入力項目の数値から Date オブジェクトを作成
+    function createDate(yearId, monthId, dayId, hourId, minuteId) {
+      var year   = parseInt(document.getElementById(yearId).value, 10);
+      var month  = parseInt(document.getElementById(monthId).value, 10) - 1; // JS の月は 0～11
+      var day    = parseInt(document.getElementById(dayId).value, 10);
+      var hour   = parseInt(document.getElementById(hourId).value, 10);
+      var minute = parseInt(document.getElementById(minuteId).value, 10);
+      return new Date(year, month, day, hour, minute, 0);
+    }
+    
+    // "YYYY/MM/DD HH°MM'SS"" の形式で時刻を整形
+    function formatDateTime(date) {
+      var year   = date.getFullYear();
+      var month  = ("0" + (date.getMonth() + 1)).slice(-2);
+      var day    = ("0" + date.getDate()).slice(-2);
+      var hour   = ("0" + date.getHours()).slice(-2);
+      var minute = ("0" + date.getMinutes()).slice(-2);
+      var second = ("0" + date.getSeconds()).slice(-2);
+      return year + "/" + month + "/" + day + " " + hour + "°" + minute + "'" + second + '"';
+    }
+    
+    // 指定期間（秒）における更新確率: P = 1 - exp( - Δt / Δ )
+    // ※ Δt: 対象期間の秒数、Δ: 観測時間までの経過秒数
+    function calcProbability(deltaSec, Delta) {
+      return 1 - Math.exp(- deltaSec / Delta);
+    }
+    
+    function calculate() {
+      // 前回更新時刻と観測時刻は、入力された数値から生成
+      var lastUpdate = createDate("lastYear", "lastMonth", "lastDay", "lastHour", "lastMinute");
+      var obsTime    = createDate("obsYear", "obsMonth", "obsDay", "obsHour", "obsMinute");
+      
+      if (obsTime <= lastUpdate) {
+        alert("観測時間は前回の更新時間より後でなければなりません。");
+        return;
+      }
+      
+      // 平均更新間隔の推定値（秒）：観測時刻までの経過秒数
+      var Delta = (obsTime - lastUpdate) / 1000;
+      
+      // ここからの計算は「今から」つまり実際の現在時刻を基準にします
+      var now = new Date();
+      
+      // 各カレンダー区間の終了時刻を「now」を基準に設定
+      
+      // 今の1時間：now の属する時間帯の終了（例：10:23 → 11:00）
+      var endOfHour = new Date(now);
+      endOfHour.setMinutes(0, 0, 0);
+      endOfHour.setHours(now.getHours() + 1);
+      
+      // 今日中：当日の 23:59:59
+      var endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      
+      // 今日から3日以内：当日を含む3日間の最終時刻
+      var endOf3Days = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 23, 59, 59);
+      
+      // 今週：週末（日曜日）の 23:59:59（※nowが日曜の場合はその日）
+      var dayOfWeek = now.getDay(); // 0:日曜～6:土曜
+      var daysUntilSunday = (7 - dayOfWeek) % 7;
+      var endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday, 23, 59, 59);
+      
+      // 今2週間：次週末（日曜日）の 23:59:59
+      var endOf2Weeks = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate() + 7, 23, 59, 59);
+      
+      // 今月：当月最終日の 23:59:59
+      var endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      
+      // 今年：12月31日の 23:59:59
+      var endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+      
+      // 残り秒数（nowから各終了時刻まで）
+      var secHour   = (endOfHour - now) / 1000;
+      var secDay    = (endOfDay - now) / 1000;
+      var sec3Days  = (endOf3Days - now) / 1000;
+      var secWeek   = (endOfWeek - now) / 1000;
+      var sec2Weeks = (endOf2Weeks - now) / 1000;
+      var secMonth  = (endOfMonth - now) / 1000;
+      var secYear   = (endOfYear - now) / 1000;
+      
+      // 各期間における更新確率の算出
+      var probHour   = calcProbability(secHour, Delta);
+      var probDay    = calcProbability(secDay, Delta);
+      var prob3Days  = calcProbability(sec3Days, Delta);
+      var probWeek   = calcProbability(secWeek, Delta);
+      var prob2Weeks = calcProbability(sec2Weeks, Delta);
+      var probMonth  = calcProbability(secMonth, Delta);
+      var probYear   = calcProbability(secYear, Delta);
+      
+      // 閾値超え時刻：P = 1 - exp(-t/Δ)  より  t = -Δ * ln(1 - P)
+      function thresholdTime(threshold) {
+        var t_sec = -Delta * Math.log(1 - threshold);
+        return new Date(now.getTime() + t_sec * 1000);
+      }
+      
+      var time10 = thresholdTime(0.10);
+      var time25 = thresholdTime(0.25);
+      var time50 = thresholdTime(0.50);
+      var time90 = thresholdTime(0.90);
+      var time95 = thresholdTime(0.95);
+      
+      // 結果の表示
+      var resultHTML = "";
+      resultHTML += "<p>今の1時間に更新される確率： " + (probHour * 100).toFixed(6) + "%</p>";
+      resultHTML += "<p>今日中に更新される確率： "   + (probDay * 100).toFixed(6)  + "%</p>";
+      resultHTML += "<p>今日から3日以内に更新される確率： " + (prob3Days * 100).toFixed(6) + "%</p>";
+      resultHTML += "<p>今週中に更新される確率： "     + (probWeek * 100).toFixed(6)   + "%</p>";
+      resultHTML += "<p>今2週間に更新される確率： "    + (prob2Weeks * 100).toFixed(6) + "%</p>";
+      resultHTML += "<p>今月に更新される確率： "      + (probMonth * 100).toFixed(6)  + "%</p>";
+      resultHTML += "<p>今年に更新される確率： "       + (probYear * 100).toFixed(6)   + "%</p>";
+      
+      resultHTML += "<hr>";
+      resultHTML += "<p>更新確率が10%を越える時刻： " + formatDateTime(time10) + "</p>";
+      resultHTML += "<p>更新確率が25%を越える時刻： " + formatDateTime(time25) + "</p>";
+      resultHTML += "<p>更新確率が50%を越える時刻： " + formatDateTime(time50) + "</p>";
+      resultHTML += "<p>更新確率が90%を越える時刻： " + formatDateTime(time90) + "</p>";
+      resultHTML += "<p>更新確率が95%を越える時刻： " + formatDateTime(time95) + "</p>";
+      
+      document.getElementById("result").innerHTML = resultHTML;
+    }
+  </script>
+</body>
+</html>
+
